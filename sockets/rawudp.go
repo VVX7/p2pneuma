@@ -49,7 +49,6 @@ func (contact UDP) Communicate(agent *util.AgentConfig, name string) (*util.Conn
 	go func() {
 		defer connection.Cleanup()
 		for envelope := range send {
-			util.DebugLogf("[-] Sent UDP beacon.")
 			go udpBufferedSend(conn, *envelope.Beacon)
 		}
 	}()

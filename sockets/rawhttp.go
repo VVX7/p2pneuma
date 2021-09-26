@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"github.com/preludeorg/pneuma/channels"
 	"github.com/preludeorg/pneuma/util"
 	"io/ioutil"
 	"net/http"
@@ -53,28 +54,19 @@ func (contact HTTP) Communicate(agent *util.AgentConfig, name string) (*util.Con
 	// Write socket goroutine reads from the connection Send chan and writes to the socket.
 	go func() {
 		defer connection.Cleanup()
-		for envelope := range send {
-			util.DebugLogf("[-] Sent TCP beacon.")
-			go beaconPOST(agent.Contact["http"], connection, *envelope.Beacon)
+		for {
+			envelope := <-send
+			beaconPOST(agent.Contact["http"], connection, *envelope.Beacon)
 		}
 	}()
 
-	//for {
-	//	refreshBeacon(agent, &beacon, "http")
-	//	for len(agent.Contact["http"]) > 0 {
-	//		body := beaconPOST(agent.Contact["http"], beacon)
-	//		var tempB util.Beacon
-	//		if err := json.Unmarshal(body, &tempB); err != nil || len(tempB.Links) == 0 {
-	//			break
-	//		}
-	//		runLinks(&tempB, &beacon, agent, "")
-	//	}
-	//	if len(agent.Contact["http"]) > 0 {
-	//		return beacon, nil
-	//	}
-	//	beacon.Links = beacon.Links[:0]
-	//	jitterSleep(agent.Sleep, "HTTP")
-	//}
+	go func() {
+		defer connection.Cleanup()
+		for {
+			env := <-recv
+			channels.Envelopes <- env
+		}
+	}()
 
 	return connection, nil
 }
@@ -158,38 +150,3 @@ func requestHTTPPayload(address string) ([]byte, string, int, error) {
 	}
 	return nil, "", 0, err
 }
-
-//func beaconPOST(address string, beacon util.Beacon) []byte {
-//	data, _ := json.Marshal(beacon)
-//	body, _, code, err := request(address, "POST", util.Encrypt(data))
-//	if len(body) > 0 && code == 200 && err == nil {
-//		return []byte(util.Decrypt(string(body)))
-//	}
-//	return body
-//}
-//
-//func request(address string, method string, data []byte) ([]byte, http.Header, int, error) {
-//	client := &http.Client{}
-//	req, err := http.NewRequest(method, address, bytes.NewBuffer(data))
-//	if err != nil {
-//		util.DebugLog(err)
-//	}
-//	req.Close = true
-//	req.Header.Set("User-Agent", *UA)
-//	resp, err := client.Do(req)
-//	if err != nil {
-//		util.DebugLog(err)
-//		return nil, nil, 404, err
-//	}
-//	body, err := ioutil.ReadAll(resp.Body)
-//	if err != nil {
-//		util.DebugLog(err)
-//		return nil, nil, resp.StatusCode, err
-//	}
-//	err = resp.Body.Close()
-//	if err != nil {
-//		util.DebugLog(err)
-//		return nil, nil, resp.StatusCode, err
-//	}
-//	return body, resp.Header, resp.StatusCode, err
-//}
