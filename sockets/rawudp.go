@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"github.com/preludeorg/pneuma/channels"
 	"github.com/preludeorg/pneuma/util"
 	"io"
 	"net"
@@ -48,8 +49,10 @@ func (contact UDP) Communicate(agent *util.AgentConfig, name string) (*util.Conn
 	// Write socket goroutine reads from the connection Send chan and writes to the socket.
 	go func() {
 		defer connection.Cleanup()
-		for envelope := range send {
-			go udpBufferedSend(conn, *envelope.Beacon)
+		for {
+			envelope := <-send
+			udpBufferedSend(conn, *envelope.Beacon)
+			channels.UpdateSentLinks(envelope)
 		}
 	}()
 
@@ -65,8 +68,18 @@ func (contact UDP) Communicate(agent *util.AgentConfig, name string) (*util.Conn
 			if envelope != nil {
 				recv <- envelope
 			}
+			util.JitterSleep(agent.CommandJitter, "SILENT")
 		}
 	}()
+
+	go func() {
+		defer connection.Cleanup()
+		for {
+			env := <-recv
+			channels.Envelopes <- env
+		}
+	}()
+
 	return connection, nil
 }
 
@@ -79,10 +92,11 @@ func udpRead(conn net.Conn) (*util.Beacon, error) {
 		err := json.Unmarshal([]byte(util.Decrypt(message)), &beacon)
 		if err != nil {
 			util.DebugLog("[-] Unable to decrypt TCP message.")
-			return nil, err
+			continue
 		}
+		return &beacon, nil
 	}
-	return &beacon, nil
+	return nil, nil
 }
 
 // udpBufferedSend

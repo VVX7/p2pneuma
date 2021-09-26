@@ -58,17 +58,7 @@ func (contact TCP) Communicate(agent *util.AgentConfig, name string) (*util.Conn
 		for {
 			envelope := <-send
 			bufferedSend(conn, *envelope.Beacon)
-			// get the cache
-			c := channels.ReadCacheLinks()
-			for _, link := range envelope.Beacon.Links {
-				if l, b := c[link.ID]; b {
-					if l.State == "complete" {
-						if l.Sent == false {
-							_ = channels.WriteCacheLink("complete", true, link.ID)
-						}
-					}
-				}
-			}
+			channels.UpdateSentLinks(envelope)
 		}
 	}()
 

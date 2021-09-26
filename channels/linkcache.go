@@ -31,3 +31,16 @@ func InitLinkCacheManager() {
 		}
 	}
 }
+
+func UpdateSentLinks(envelope *util.Envelope) {
+	c := ReadCacheLinks()
+	for _, link := range envelope.Beacon.Links {
+		if l, b := c[link.ID]; b {
+			if l.State == "complete" {
+				if l.Sent == false {
+					_ = WriteCacheLink("complete", true, link.ID)
+				}
+			}
+		}
+	}
+}

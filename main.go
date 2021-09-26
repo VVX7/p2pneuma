@@ -27,7 +27,7 @@ func main() {
 	//address := flag.String("address", agent.Address, "The ip:port of the socket listening post")
 	udp := flag.String("udp", agent.UDP, "The ip:port of the socket listening post")
 	tcp := flag.String("tcp", agent.TCP, "The ip:port of the socket listening post")
-	http := flag.String("http", agent.UDP, "The ip:port of the socket listening post")
+	http := flag.String("http", agent.HTTP, "The ip:port of the socket listening post")
 	grpc := flag.String("grpc", agent.GRPC, "The ip:port of the socket listening post")
 	p2p := flag.String("p2p", agent.P2P, "The GossipSub topic.")
 	group := flag.String("range", agent.Range, "Which range to associate to")

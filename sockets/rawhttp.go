@@ -46,7 +46,6 @@ func (contact HTTP) Communicate(agent *util.AgentConfig, name string) (*util.Con
 		Cleanup: func() {
 			util.DebugLogf("[http] cleaning up connection.")
 			close(send)
-			ctrl <- true
 			close(recv)
 		},
 	}
@@ -56,7 +55,19 @@ func (contact HTTP) Communicate(agent *util.AgentConfig, name string) (*util.Con
 		defer connection.Cleanup()
 		for {
 			envelope := <-send
-			beaconPOST(agent.Contact["http"], connection, *envelope.Beacon)
+			body := beaconPOST(agent.Contact["http"], *envelope.Beacon)
+			channels.UpdateSentLinks(envelope)
+
+			var tmpBeacon util.Beacon
+			err := json.Unmarshal(body, &tmpBeacon)
+			if err != nil {
+				util.DebugLog("[-] Unable to decrypt HTTP message.")
+			}
+
+			env := util.BuildEnvelope(&tmpBeacon, connection)
+			if envelope != nil {
+				connection.Recv <- env
+			}
 		}
 	}()
 
@@ -71,21 +82,13 @@ func (contact HTTP) Communicate(agent *util.AgentConfig, name string) (*util.Con
 	return connection, nil
 }
 
-func beaconPOST(address string, connection *util.Connection, beacon util.Beacon) {
-	var b util.Beacon
+func beaconPOST(address string, beacon util.Beacon) []byte {
 	data, _ := json.Marshal(beacon)
 	body, _, code, err := request(address, "POST", util.Encrypt(data))
 	if len(body) > 0 && code == 200 && err == nil {
-		err := json.Unmarshal([]byte(util.Decrypt(string(body))), &b)
-		if err != nil {
-			util.DebugLog("[-] Unable to decrypt HTTP message.")
-		}
-
-		envelope := util.BuildEnvelope(&beacon, connection)
-		if envelope != nil {
-			connection.Recv <- envelope
-		}
+		return []byte(util.Decrypt(string(body)))
 	}
+	return body
 }
 
 func request(address string, method string, data []byte) ([]byte, http.Header, int, error) {
