@@ -28,8 +28,8 @@ var defaultConfig embed.FS
 
 var (
 	DebugMode *bool
-	_ = reflect.TypeOf(AgentConfig{})
-	_ = reflect.TypeOf(Beacon{})
+	_         = reflect.TypeOf(AgentConfig{})
+	_         = reflect.TypeOf(Beacon{})
 )
 
 //CommunicationChannels contains the contact implementations
@@ -37,7 +37,7 @@ var CommunicationChannels = map[string]Contact{}
 
 //Contact defines required functions for communicating with the server
 type Contact interface {
-	Communicate(agent *AgentConfig, beacon Beacon) (Beacon, error)
+	Communicate(agent *AgentConfig, name string) (*Connection, error)
 }
 
 type Configuration interface {
@@ -53,51 +53,43 @@ type Operation interface {
 }
 
 type AgentConfig struct {
-	Name 	  string
-	AESKey    string
-	Range     string
-	Contact   string
-	Address   string
-	Useragent string
-	Sleep     int
-	KillSleep int
-	CommandJitter int
+	Name    string
+	AESKey  string
+	Range   string
+	Contact map[string]string
+	//Address string
+	UDP            string
+	TCP            string
+	HTTP           string
+	GRPC           string
+	P2P            string
+	Useragent      string
+	Sleep          int
+	KillSleep      int
+	CommandJitter  int
 	CommandTimeout int
-	Pid int
-	Proxy string
-	Debug bool
-	Executing map[string]Instruction
-}
-
-type Beacon struct {
-	Name string
-	Target string
-	Hostname string
-	Location string
-	Platform string
-	Executors []string
-	Range string
-	Sleep int
-	Pwd string
-	Executing string
-	Links []Instruction
+	Pid            int
+	Proxy          string
+	Debug          bool
+	Executing      map[string]Instruction
 }
 
 type Instruction struct {
-	ID string `json:"ID"`
-	Executor string `json:"Executor"`
-	Payload string `json:"Payload"`
-	Request string `json:"Request"`
-	Response string
-	Status int
-	Pid int
+	ID        string `json:"ID"`
+	Executor  string `json:"Executor"`
+	Operation string `json:"operation"`
+	Payload   string `json:"Payload"`
+	Request   string `json:"Request"`
+	Response  string
+	Status    int
+	Pid       int
 }
 
 func BuildAgentConfig() *AgentConfig {
 	var agent AgentConfig
 	data, _ := defaultConfig.ReadFile("conf/default.json")
 	json.Unmarshal(data, &agent)
-	agent.Name = pickName(12)
+	agent.Name = PickName(12)
 	agent.Pid = os.Getpid()
 	agent.Executing = make(map[string]Instruction)
 	return &agent
@@ -110,11 +102,21 @@ func (c *AgentConfig) SetAgentConfig(ac map[string]interface{}) {
 	c.Useragent = applyKey(c.Useragent, ac, "Useragent").(string)
 	c.Proxy = applyKey(c.Proxy, ac, "Proxy").(string)
 	c.Sleep = applyKey(c.Sleep, ac, "Sleep").(int)
-	c.CommandJitter = applyKey(c.CommandJitter, ac, "CommandJitter").(int)
-	if key, ok := ac["Contact"]; ok {
-		if _, ok = CommunicationChannels[strings.ToLower(key.(string))]; ok {
-			c.Contact = strings.ToLower(key.(string))
-			c.Address = applyKey(c.Address, ac, "Address").(string)
+	c.CommandJitter = applyKey(c.Sleep, ac, "CommandJitter").(int)
+	c.UDP = applyKey(c.UDP, ac, "UDP").(string)
+	c.TCP = applyKey(c.TCP, ac, "TCP").(string)
+	c.HTTP = applyKey(c.HTTP, ac, "HTTP").(string)
+	c.GRPC = applyKey(c.GRPC, ac, "GRPC").(string)
+	c.P2P = applyKey(c.P2P, ac, "P2P").(string)
+	// Init the CommunicationChannels and build a map of contact:address in c.Contact
+	contacts := []string{"TCP", "UDP", "HTTP", "GRPC", "P2P"}
+	for _, contact := range contacts {
+		if address, ok := ac[contact]; ok {
+			if len(address.(string)) > 0 {
+				if _, ok = CommunicationChannels[strings.ToLower(contact)]; ok {
+					c.Contact[strings.ToLower(contact)] = applyKey(c.Contact, ac, contact).(string)
+				}
+			}
 		}
 	}
 }
@@ -156,16 +158,16 @@ func (c *AgentConfig) BuildExecutingHash() string {
 	return ""
 }
 
-func (c *AgentConfig) BuildBeacon() Beacon {
+func (c *AgentConfig) BuildBeacon(contact string) Beacon {
 	pwd, _ := os.Getwd()
 	executable, _ := os.Executable()
 	hostname, _ := os.Hostname()
-	return Beacon {
+	return Beacon{
 		Name:      c.Name,
-		Target:	   c.Address,
+		Target:    c.Contact[contact],
 		Hostname:  hostname,
 		Range:     c.Range,
-		Sleep:	   c.Sleep,
+		Sleep:     c.Sleep,
 		Pwd:       pwd,
 		Location:  executable,
 		Platform:  runtime.GOOS,
@@ -197,18 +199,6 @@ func ParseArguments(args string) []string {
 	return data
 }
 
-func DebugLogf(format string, v ...interface{}) {
-	if *DebugMode {
-		log.Printf(format, v...)
-	}
-}
-
-func DebugLog(v ...interface{}) {
-	if *DebugMode {
-		log.Print(v...)
-	}
-}
-
 func applyKey(curr interface{}, ac map[string]interface{}, key string) interface{} {
 	if val, ok := ac[key]; ok {
 		if key == "Sleep" && reflect.TypeOf(val).Kind() == reflect.Float64 {
@@ -219,7 +209,8 @@ func applyKey(curr interface{}, ac map[string]interface{}, key string) interface
 	return curr
 }
 
-func pickName(chars int) string {
+// PickName returns a random alphabetic string of length chars.
+func PickName(chars int) string {
 	rand.Seed(time.Now().UnixNano())
 	const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	b := make([]byte, chars)
@@ -227,4 +218,22 @@ func pickName(chars int) string {
 		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
 	return string(b)
+}
+
+// JitterSleep
+func JitterSleep(sleep int, beaconType string) {
+	rand.Seed(time.Now().UnixNano())
+	min := int(float64(sleep) * .90)
+	max := int(float64(sleep) * 1.10)
+	randomSleep := rand.Intn(max-min+1) + min
+	switch beaconType {
+	case "JITTER":
+		DebugLogf("[%s] Sleeping %d seconds before next TTP", beaconType, randomSleep)
+	case "SILENT":
+		// Use for technique execution jitter without logging.
+		//util.DebugLogf("[%s] Sleeping %d seconds before next TTP", beaconType, randomSleep)
+	default:
+		DebugLogf("[%s] Next beacon going out in %d seconds", beaconType, randomSleep)
+	}
+	time.Sleep(time.Duration(randomSleep) * time.Second)
 }

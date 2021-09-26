@@ -39,6 +39,17 @@ func Decrypt(text string) string {
 		DebugLog(err)
 		return ""
 	}
+
+	// TODO: Bug where scanner sometimes returning messages with an invalid block size.
+	// TODO: Decrypt() should better error handling so the agent doesn't panic.
+	if len(cipherText) <= aes.BlockSize {
+		DebugLogf("[Decrypt] cipherText invalid block length: %v\n", cipherText)
+		return ""
+	} else if len(cipherText)%16 != 0 {
+		DebugLogf("[Decrypt] cipherText invalid block size: %v\n", cipherText)
+		return ""
+	}
+
 	iv := cipherText[:aes.BlockSize]
 	cipherText = cipherText[aes.BlockSize:]
 	mode := cipher.NewCBCDecrypter(block, iv)
