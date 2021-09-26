@@ -68,27 +68,6 @@ func (contact UDP) Communicate(agent *util.AgentConfig, name string) (*util.Conn
 			}
 		}
 	}()
-
-	//for len(agent.Contact["udp"]) > 0 {
-	//	conn, err := net.Dial("udp", agent.Contact["udp"])
-	//  	if err != nil {
-	//		util.DebugLogf("[-] %s is either unavailable or a firewall is blocking traffic.", agent.Contact["udp"])
-	//  	} else {
-	//		//initial beacon
-	//		udpBufferedSend(conn, beacon)
-	//
-	//		//reverse-shell
-	//		scanner := bufio.NewScanner(conn)
-	//		for scanner.Scan() && len(agent.Contact["udp"]) > 0 {
-	//			message := strings.TrimSpace(scanner.Text())
-	//			udpRespond(conn, beacon, message, agent)
-	//			if len(agent.Contact["tcp"]) <= 0 {
-	//				return beacon, nil
-	//			}
-	//		}
-	//  	}
-	//  	jitterSleep(agent.Sleep, "UDP")
-	//}
 	return connection, nil
 }
 
@@ -107,16 +86,7 @@ func udpRead(conn net.Conn) (*util.Beacon, error) {
 	return &beacon, nil
 }
 
-//func udpRespond(conn net.Conn, beacon util.Beacon, message string, agent *util.AgentConfig){
-//	var tempB util.Beacon
-//	if err := json.Unmarshal([]byte(util.Decrypt(message)), &tempB); err == nil {
-//		beacon.Links = beacon.Links[:0]
-//		runLinks(&tempB, &beacon, agent, "\r\n")
-//	}
-//	refreshBeacon(agent, &beacon, "udp")
-//	udpBufferedSend(conn, beacon)
-//}
-
+// udpBufferedSend
 func udpBufferedSend(conn net.Conn, beacon util.Beacon) {
 	data, _ := json.Marshal(beacon)
 	allData := bytes.NewReader(append(util.Encrypt(data), "\n"...))
