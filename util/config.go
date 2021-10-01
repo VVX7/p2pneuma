@@ -21,6 +21,8 @@ import (
 const (
 	ErrorExitStatus   = -1
 	SuccessExitStatus = 0
+	// DefaultPubSubTopic defines the default libp2p pubsub topic subscription.
+	DefaultPubSubTopic = "/libp2p/pneumaex/1.0.0"
 )
 
 //go:embed conf/default.json
@@ -229,9 +231,6 @@ func JitterSleep(sleep int, beaconType string) {
 	switch beaconType {
 	case "JITTER":
 		DebugLogf("[%s] Sleeping %d seconds before next TTP", beaconType, randomSleep)
-	case "SILENT":
-		// Use for technique execution jitter without logging.
-		//util.DebugLogf("[%s] Sleeping %d seconds before next TTP", beaconType, randomSleep)
 	default:
 		DebugLogf("[%s] Next beacon going out in %d seconds", beaconType, randomSleep)
 	}

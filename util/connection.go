@@ -36,6 +36,7 @@ func RefreshConnections(agent *AgentConfig, connections map[string]*Connection) 
 			conn, err := CommunicationChannels[contact].Communicate(agent, name)
 			if err != nil {
 				DebugLogf("[%s] Error initializing connection.", err)
+				continue
 			}
 			connections[name] = conn
 		}

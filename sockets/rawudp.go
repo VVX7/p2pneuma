@@ -68,7 +68,7 @@ func (contact UDP) Communicate(agent *util.AgentConfig, name string) (*util.Conn
 			if envelope != nil {
 				recv <- envelope
 			}
-			util.JitterSleep(agent.CommandJitter, "SILENT")
+			util.JitterSleep(agent.CommandJitter, "")
 		}
 	}()
 

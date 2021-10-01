@@ -75,7 +75,7 @@ func (contact TCP) Communicate(agent *util.AgentConfig, name string) (*util.Conn
 				envelope := util.BuildEnvelope(beacon, connection)
 				recv <- envelope
 			}
-			util.JitterSleep(agent.CommandJitter, "SILENT")
+			util.JitterSleep(agent.CommandJitter, "")
 		}
 	}()
 

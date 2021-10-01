@@ -14,7 +14,6 @@ func InitBeaconManager() {
 		op := <-BeaconOpsChannel
 		switch {
 		// op.Contact string is used to select the contact target from the AgentConfig.
-		// Instead of mutating the beacon, which should be initiated by a write op, read returns a copy.
 		case op.Type == "read":
 			b := beacon
 			b.Target = agent.Contact[op.Contact]
@@ -30,7 +29,7 @@ func InitBeaconManager() {
 				beacon.Links = append(beacon.Links, link)
 			}
 			op.ResponseStatus <- true
-		// Removes complete and sent links from the Beacon.
+		// Removes Links that have completed execution and have been sent to Operator.
 		case op.Type == "trim":
 			TrimSentLinks(&beacon)
 			op.ResponseStatus <- true

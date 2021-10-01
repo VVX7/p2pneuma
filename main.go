@@ -5,9 +5,9 @@ import (
 	"github.com/preludeorg/pneuma/channels"
 	"github.com/preludeorg/pneuma/sockets"
 	"github.com/preludeorg/pneuma/util"
-	//_ "net/http/pprof"
 	"os"
 	"strings"
+
 	"sync"
 )
 
@@ -23,8 +23,6 @@ func init() {
 func main() {
 	agent := util.BuildAgentConfig()
 	name := flag.String("name", agent.Name, "Give this agent a name")
-	//contact := flag.String("contact", agent.Contact, "Which contact to use")
-	//address := flag.String("address", agent.Address, "The ip:port of the socket listening post")
 	udp := flag.String("udp", agent.UDP, "The ip:port of the socket listening post")
 	tcp := flag.String("tcp", agent.TCP, "The ip:port of the socket listening post")
 	http := flag.String("http", agent.HTTP, "The ip:port of the socket listening post")
@@ -40,9 +38,7 @@ func main() {
 
 	// Initialize the AgentConfig from cli flags
 	agent.SetAgentConfig(map[string]interface{}{
-		"Name": *name,
-		//"Contact": *contact,
-		//"Address": *address,
+		"Name":          *name,
 		"TCP":           *tcp,
 		"UDP":           *udp,
 		"HTTP":          *http,
@@ -58,8 +54,12 @@ func main() {
 	for contact, address := range agent.Contact {
 		if len(address) > 0 {
 			if !strings.Contains(address, ":") {
-				util.DebugLogf("Your %s address is incorrect\n", contact)
-				os.Exit(1)
+				if contact == "p2p" {
+					continue
+				} else {
+					util.DebugLogf("Your %s address is incorrect\n", contact)
+					os.Exit(1)
+				}
 			}
 		}
 	}

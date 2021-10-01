@@ -28,6 +28,7 @@ func InitLinkCacheManager() {
 		case op.Type == "trim":
 			TrimLinkCache(&cache)
 		default:
+			util.DebugLogf("[LinkCache goroutine] unknown op type: %#v\n", op)
 		}
 	}
 }

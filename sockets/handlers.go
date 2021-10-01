@@ -5,6 +5,7 @@ import (
 	"github.com/preludeorg/pneuma/commands"
 	"github.com/preludeorg/pneuma/util"
 	"strings"
+	"sync"
 )
 
 type RPCHandler func(*util.Beacon, *util.Connection)
@@ -21,13 +22,14 @@ var (
 
 var (
 	executorHandlers = map[string]ExecutorHandler{
-		"executorGeneric": executorGenericHandler,
+		"executor": executorHandler,
 	}
 )
 
 var (
 	p2pHandlers = map[string]P2PHandler{
-		"p2pGeneric": p2pGenericHandler,
+		"p2pExecutor": p2pExecutorHandler,
+		"p2pC2Bridge": p2pC2BridgeHandler,
 	}
 )
 
@@ -85,13 +87,36 @@ func cdHandler(beacon *util.Beacon, conn *util.Connection) {
 	// TODO: implement Sliver-like RPC handlers
 }
 
-func p2pGenericHandler(beacon *util.Beacon, conn *util.Connection) {
-	// TODO: implement p2p handlers
+// p2pExecutorHandler passes a beacon to the executors.
+func p2pExecutorHandler(beacon *util.Beacon, conn *util.Connection) {
+	// Falls through to the executorHandler.
+	executorHandler(beacon)
 }
 
-// executorGenericHandler calls runLinks on a Beacon and executes each Link.
+// p2pC2BridgeHandler passes a beacon to active Connection.Send channels.
+// This forwards beacons from p2p-only nodes to Operator.
+func p2pC2BridgeHandler(beacon *util.Beacon, conn *util.Connection) {
+	// Get the active connections.
+	connections := channels.ReadConnections()
+	// Wait for each contact's EventLoop to complete before sending the next beacon.
+	var wg sync.WaitGroup
+	// Forward the beacon to each connection.Send chan
+	for _, conn := range connections {
+		wg.Add(1)
+
+		// Construct the Envelope that holds the Beacon and the Connection.
+		envelope := util.BuildEnvelope(beacon, conn)
+
+		// EnvelopeForwarder passes the beacon to the connection send channel.
+		go util.EnvelopeForwarder(conn, envelope, &wg)
+	}
+	wg.Wait()
+
+}
+
+// executorHandler calls runLinks on a Beacon and executes each Link.
 // This is equivalent to the original Pneuma execution method via respond calling runLinks.
-func executorGenericHandler(beacon *util.Beacon) {
+func executorHandler(beacon *util.Beacon) {
 	// Copy the Beacon and remove Links.
 	tmpBeacon := channels.ReadBeacon("tcp")
 	tmpBeacon.Links = tmpBeacon.Links[:0]

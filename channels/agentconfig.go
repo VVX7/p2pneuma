@@ -8,11 +8,11 @@ func InitAgentConfigManager(agent *util.AgentConfig) {
 	for {
 		op := <-AgentConfigOpsChannel
 		switch {
+		// Read ops return the AgentConfig.
 		case op.Type == "read":
-			//
 			op.ResponseConfig <- agent
+		// Write ops modify the AgentConfig.
 		case op.Type == "write":
-			//
 			agent = op.Config
 			op.ResponseStatus <- true
 		default:

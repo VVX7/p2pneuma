@@ -1,0 +1,21 @@
+syntax = "proto3";
+package pubsub;
+option go_package = "./pubsub";
+
+
+message SendBeacon {
+  string agent = 1;
+  string message = 2;
+}
+
+message UpdateRoute {
+  string agent = 1;
+  string route = 2;
+}
+
+message EventWrapper {
+  oneof msg {
+    SendBeacon b = 1;
+    UpdateRoute r = 2;
+  }
+}
